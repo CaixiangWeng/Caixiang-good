@@ -1,79 +1,148 @@
-<!-- 1. 必须用这三行 Google 官方库，在澳洲最快 -->
-<script src="https://gstatic.com"></script>
-<script src="https://gstatic.com"></script>
-<script src="https://jsdelivr.net"></script>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Caixiang666 模拟股票 - 终极修复版</title>
+    <!-- 1. 澳洲专用高速库 -->
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        :root { --bg: #0f172a; --card: #1e293b; --yellow: #fbbf24; --up: #ef4444; --down: #22c55e; }
+        body { font-family: sans-serif; background: var(--bg); color: #f8fafc; padding: 20px; margin: 0; }
+        .header { background: var(--card); padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #334155; }
+        #loginBox { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 1000; display: flex; justify-content: center; align-items: center; }
+        .login-card { background: var(--card); padding: 40px; border-radius: 16px; border: 1px solid var(--yellow); text-align: center; width: 300px; }
+        /* 亮黄色按钮 */
+        .btn-yellow { background: var(--yellow) !important; color: #000 !important; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 18px; }
+        input { background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; width: 90%; margin-bottom: 15px; }
+        table { width: 100%; background: var(--card); border-collapse: collapse; margin-top: 20px; border-radius: 12px; overflow: hidden; }
+        th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: center; }
+        .up { color: var(--up) !important; font-weight: bold; }
+        .down { color: var(--down) !important; font-weight: bold; }
+        .btn-big { width: 100%; padding: 15px; background: #f59e0b; color: white; border: none; border-radius: 10px; font-size: 18px; margin-top: 20px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="loginBox">
+    <div class="login-card">
+        <h2 style="color: var(--yellow);">🚀 CAIXIANG666 登录</h2>
+        <input type="text" id="pName" placeholder="操盘手代号">
+        <input type="password" id="pPwd" placeholder="4位密码">
+        <button id="loginBtn" class="btn-yellow" onclick="doLogin()">同步云端并进入</button>
+    </div>
+</div>
+
+<div class="header">
+    <div>
+        <h2 style="margin:0">💹 模拟股票系统</h2>
+        <div id="balanceDisplay" style="color: var(--yellow); font-size: 22px; font-weight: bold;">¥100,000.00</div>
+    </div>
+</div>
+
+<table id="stockTable">
+    <thead><tr><th>代码</th><th>名称</th><th>价格</th><th>涨跌</th><th>持有</th><th>操作</th></tr></thead>
+    <tbody id="stockBody"></tbody>
+</table>
+
+<button onclick="simulateDay()" class="btn-big">⏳ 结束交易并同步榜单</button>
+
+<div id="chartContainer" style="display:none; margin-top:20px; background:var(--card); padding:20px; border-radius:12px;">
+    <canvas id="myChart" height="150"></canvas>
+</div>
+
+<div style="margin-top: 30px; background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid #334155;">
+    <h3 style="color: var(--yellow); margin-top: 0;">🏆 实时联机榜单</h3>
+    <div id="rankList">连接中...</div>
+</div>
 
 <script>
-    // 2. 你的配置
+    // 你的 Firebase 钥匙
     const firebaseConfig = {
-        apiKey: "AIzaSyAOCLu6X1gbrYzHLx_HlhJrtXQ_ftSddcQ",
-        authDomain: "://firebaseapp.com",
-        databaseURL: "https://firebasedatabase.app",
-        projectId: "caixiang666-stock",
-        storageBucket: "caixiang666-stock.firebasestorage.app",
-        messagingSenderId: "504203288950",
-        appId: "1:504203288950:web:2f93e0c6a2dde37f095a57"
+      apiKey: "AIzaSyAOCLu6X1gbrYzHLx_HlhJrtXQ_ftSddcQ",
+      authDomain: "://firebaseapp.com",
+      databaseURL: "https://firebasedatabase.app",
+      projectId: "caixiang666-stock",
+      storageBucket: "caixiang666-stock.firebasestorage.app",
+      messagingSenderId: "504203288950",
+      appId: "1:504203288950:web:2f93e0c6a2dde37f095a57"
     };
 
-    // 3. 初始化补丁
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 4. 登录逻辑 (加了详细报错提示)
+    let balance = 100000, stocks = [], playerName = "", myChart = null;
+
     async function doLogin() {
         const name = document.getElementById('pName').value.trim();
         const pwd = document.getElementById('pPwd').value;
         const btn = document.getElementById('loginBtn');
-        
-        if(!name || !pwd) return alert("名字和密码都要填！");
+        if(!name || !pwd) return alert("填完整！");
 
-        btn.disabled = true;
-        btn.innerText = "正在呼叫卫星...";
-
+        btn.disabled = true; btn.innerText = "正在呼叫卫星...";
         try {
-            // 去云端查数据
             const snap = await db.ref('users/' + name).once('value');
             const data = snap.val();
 
-            if (!data) {
-                // 没号自动注册
+            if (!data) { 
                 await db.ref('users/' + name).set({ password: pwd, balance: 100000 });
-                alert("欢迎新操盘手！已为你开户。");
-                location.reload(); 
+                balance = 100000;
             } else if (data.password !== pwd) {
-                alert("密码错啦！");
-                btn.disabled = false;
-                btn.innerText = "同步并进入";
+                alert("密码错！"); btn.disabled = false; btn.innerText = "重试";
+                return;
             } else {
-                // 登录成功
-                playerName = name;
                 balance = data.balance;
-                document.getElementById('loginBox').style.display = 'none';
-                initStocks(); // 开启股票初始化
-                updateRanks(); // 刷新排行榜
             }
-        } catch (e) {
-            console.error(e);
-            alert("连接失败: " + e.message);
-            btn.disabled = false;
-            btn.innerText = "重试";
-        }
+
+            playerName = name;
+            document.getElementById('loginBox').style.display = 'none';
+            initStocks(); updateRanks();
+        } catch(e) { alert("失败: " + e.message); btn.disabled = false; }
     }
-    
-    // 排行榜实时监听补丁
+
+    function initStocks() {
+        const adjs = ['芯片','能源','医疗','科技'], nouns = ['股份','集团','实业'];
+        stocks = [];
+        for(let i=0; i<6; i++){
+            let p = parseFloat((Math.random()*80+20).toFixed(2));
+            stocks.push({code:'600'+Math.floor(Math.random()*899+100), name:adjs[Math.floor(Math.random()*adjs.length)]+nouns[Math.floor(Math.random()*nouns.length)], price:p, hold:0, history:[p]});
+        }
+        renderTable();
+    }
+
+    function renderTable() {
+        const body = document.getElementById('stockBody'); body.innerHTML = '';
+        stocks.forEach((s, i) => {
+            let chg = s.history.length > 1 ? ((s.price - s.history[s.history.length-2])/s.history[s.history.length-2]*100).toFixed(2) : "0.00";
+            body.innerHTML += `<tr><td>${s.code}</td><td>${s.name}</td><td>¥${s.price.toFixed(2)}</td><td class="${chg>=0?'up':'down'}">${chg}%</td><td>${s.hold}</td>
+            <td><button onclick="buy(${i})" style="color:red; cursor:pointer;">买</button> <button onclick="sell(${i})" style="color:green; cursor:pointer;">清</button></td></tr>`;
+        });
+        document.getElementById('balanceDisplay').innerText = `¥${balance.toLocaleString()}`;
+    }
+
+    async function simulateDay() {
+        stocks.forEach(s => {
+            let chg = (Math.random()*0.2-0.1);
+            s.price = parseFloat((s.price*(1+chg)).toFixed(2)); s.history.push(s.price);
+        });
+        db.ref('users/' + playerName).update({ balance: balance });
+        renderTable(); updateRanks();
+    }
+
     function updateRanks() {
         db.ref('users').orderByChild('balance').limitToLast(10).on('value', (snap) => {
             let list = [];
-            snap.forEach(child => {
-                list.push({ n: child.key, b: child.val().balance });
-            });
+            snap.forEach(child => { list.push({n: child.key, b: child.val().balance}); });
             list.reverse();
-            let h = "<table><tr><th>排名</th><th>代号</th><th>资产</th></tr>";
+            let h = "<table><tr><th>排名</th><th>玩家</th><th>资产</th></tr>";
             list.forEach((u, i) => h += `<tr><td>${i+1}</td><td>${u.n}</td><td>¥${u.b.toFixed(2)}</td></tr>`);
             document.getElementById('rankList').innerHTML = h + "</table>";
         });
     }
 
-    // ... 下面继续放你之前的 initStocks, simulateDay 等函数 ...
+    function buy(idx){ let cost=stocks[idx].price*100; if(balance>=cost){ balance-=cost; stocks[idx].hold+=100; renderTable(); }else{alert("钱不够！");}}
+    function sell(idx){ balance+=stocks[idx].hold*stocks[idx].price; stocks[idx].hold=0; renderTable(); }
 </script>
-
+</body>
+</html>
