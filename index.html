@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CAIXIANG666 模拟股票 - 终极联机版</title>
     
-    <!-- 修复后的官方稳定库地址 -->
-    <script src="https://gstatic.com"></script>
-    <script src="https://gstatic.com"></script>
-    <script src="https://gstatic.com"></script>
+    <!-- ✅ 修复 1：使用正确的 Firebase 库加载地址 -->
+    <script src="https://www.gstatic.com/firebasejs/9.1.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.1/firebase-database-compat.js"></script>
 
     <style>
         :root { --bg: #0f172a; --card: #1e293b; --yellow: #fbbf24; --up: #ef4444; --down: #22c55e; }
@@ -34,7 +33,7 @@
         <input type="text" id="pName" placeholder="操盘手代号">
         <input type="password" id="pPwd" placeholder="4位密码">
         <button id="loginBtn" class="btn-yellow" onclick="doLogin()">同步并进入</button>
-        <p id="netStatus" style="font-size: 12px; color: #ef4444; margin-top: 10px;">📡 正在连接卫星引擎...</p>
+        <p id="netStatus" style="font-size: 12px; color: #94a3b8; margin-top: 10px;">📡 正在呼叫卫星...</p>
     </div>
 </div>
 
@@ -63,12 +62,13 @@
 </div>
 
 <script>
+    // ✅ 修复 2：更新为你提供的正确 Firebase 链接
     const firebaseConfig = {
       apiKey: "AIzaSyAOCLu6X1gbrYzHLx_HlhJrtXQ_ftSddcQ",
-      authDomain: "://firebaseapp.com",
-      databaseURL: "https://firebaseio.com",
+      authDomain: "caixiang666-stock.firebaseapp.com",
+      databaseURL: "https://caixiang666-stock-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "caixiang666-stock",
-      storageBucket: "://appspot.com",
+      storageBucket: "caixiang666-stock.firebasestorage.app",
       messagingSenderId: "504203288950",
       appId: "1:504203288950:web:2f93e0c6a2dde37f095a57"
     };
@@ -77,21 +77,21 @@
 
     function initFirebase() {
         if (typeof firebase !== 'undefined') {
-            try {
-                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                db = firebase.database();
-                document.getElementById('netStatus').innerText = "✅ 卫星连接成功";
-                document.getElementById('netStatus').style.color = "#22c55e";
-            } catch(e) { console.error(e); }
-        } else { setTimeout(initFirebase, 500); }
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            document.getElementById('netStatus').innerText = "✅ 卫星连接成功";
+            document.getElementById('netStatus').style.color = "#22c55e";
+        } else {
+            setTimeout(initFirebase, 500);
+        }
     }
     initFirebase();
 
     async function doLogin() {
-        if (!db) return alert("引擎还没启动，请稍等！");
+        if (!db) return alert("卫星还没连上，请稍等！");
         const name = document.getElementById('pName').value.trim();
         const pwd = document.getElementById('pPwd').value;
-        if(!name || !pwd) return alert("代号和密码都要填！");
+        if(!name || !pwd) return alert("账号密码必填！");
 
         const btn = document.getElementById('loginBtn');
         btn.disabled = true; btn.innerText = "同步中...";
@@ -105,14 +105,17 @@
             } else if (data.password !== pwd) {
                 btn.disabled = false; btn.innerText = "同步并进入";
                 return alert("密码错啦！");
-            } else { balance = data.balance; }
-            
+            } else {
+                balance = data.balance;
+            }
             playerName = name;
             document.getElementById('loginBox').style.display='none';
             document.getElementById('gameUI').style.display='block';
-            initStocks(); updateRanks();
+            initStocks(); 
+            updateRanks();
         } catch (e) {
-            alert("同步失败，请检查网络或刷新！");
+            console.error(e);
+            alert("连接超时或权限不足，请确认 Firebase 的 Rules 已设为 public！");
             btn.disabled = false; btn.innerText = "重试";
         }
     }
@@ -132,21 +135,21 @@
         stocks.forEach((s, i) => {
             let chg = s.history.length > 1 ? ((s.price - s.history[s.history.length-2])/s.history[s.history.length-2]*100).toFixed(2) : "0.00";
             body.innerHTML += `<tr><td>${s.name}</td><td>${s.price.toFixed(2)}</td><td class="${chg>=0?'up':'down'}">${chg}%</td><td>${s.hold}</td>
-            <td><button onclick="buy(${i})" style="color:red;border:1px solid red;background:none;cursor:pointer">买入</button></td></tr>`;
+            <td><button onclick="buy(${i})" style="color:red;padding:2px">买入</button></td></tr>`;
         });
         document.getElementById('balanceDisplay').innerText = `¥${balance.toLocaleString()}`;
     }
 
     function buy(idx) {
         let cost = stocks[idx].price * 100;
-        if(balance >= cost) { balance -= cost; stocks[idx].hold += 100; renderTable(); } 
-        else { alert("钱不够了！"); }
+        if(balance >= cost) { balance -= cost; stocks[idx].hold += 100; renderTable(); }
+        else { alert("钱不够！"); }
     }
 
     function getNews() {
-        activeNews = {k:'科技', b:0.2}; // 简化版内幕
+        activeNews = {k:'科技', b:0.15};
         document.getElementById('newsBox').style.display='block';
-        document.getElementById('newsContent').innerText = "科技板块即将迎来重大利好！";
+        document.getElementById('newsContent').innerText = "内幕：科技股即将大涨！";
     }
 
     async function simulateDay() {
@@ -155,17 +158,20 @@
             if(activeNews && s.name.includes(activeNews.k)) chg += activeNews.b;
             s.price = parseFloat((s.price * (1+chg)).toFixed(2)); s.history.push(s.price);
         });
-        if(db && playerName) await db.ref('users/' + playerName).update({ balance: balance });
+        if(db && playerName) {
+            await db.ref('users/' + playerName).update({ balance: balance });
+        }
         activeNews = null; document.getElementById('newsBox').style.display='none';
-        renderTable(); updateRanks();
+        renderTable();
     }
 
     function updateRanks() {
-        db.ref('users').orderByChild('balance').limitToLast(10).once('value', (snap) => {
+        // 实时监听排行榜
+        db.ref('users').orderByChild('balance').limitToLast(10).on('value', (snap) => {
             let list = [];
             snap.forEach(c => { list.push({n: c.key, b: c.val().balance}); });
             list.sort((a,b) => b.b - a.b);
-            let h = "<table style='width:100%'><tr><th>排名</th><th>代号</th><th>身家</th></tr>";
+            let h = "<table style='width:100%'><tr><th>排名</th><th>代号</th><th>资产</th></tr>";
             list.forEach((u,i) => { h += `<tr><td>${i+1}</td><td>${u.n}</td><td>¥${u.b.toLocaleString()}</td></tr>`; });
             document.getElementById('rankList').innerHTML = h + "</table>";
         });
